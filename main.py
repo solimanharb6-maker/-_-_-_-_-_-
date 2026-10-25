@@ -4801,8 +4801,12 @@ class Game:
 
     def draw_menu(self, s):
         cx = SW // 2
-        fl = 150 + int(80 * abs(math.sin(self.t * 3))) if random.random() > 0.05 else 70
-        draw_text(s, "بيت الهمس", 54, (fl, 20, 20), cx, 4, 'c')
+        try:                                                    # صورة بيت الهمس على الشمال والقايمة على اليمين
+            art = title_art(SH)
+            s.blit(art, (0, 0))
+            cx = (art.get_width() + SW) // 2 + 10
+        except Exception:
+            pass
         draw_text(s, "10 شقق... كل واحدة أكبر وأخطر.", 24, (210, 200, 190), cx, 74, 'c')
         draw_text(s, "دوّر على المفتاح واهرب.", 24, (210, 200, 190), cx, 106, 'c')
         draw_text(s, "لو الخوف اتملى أو الوحش لمسك... بتخسر وتعيد الشقة!", 21, (200, 120, 120), cx, 134, 'c')
@@ -5463,66 +5467,32 @@ class Game:
 
 # ================================================================= الشاشة واللمس
 REAL_GEO = dict(ox=0, oy=0, sc=1.0)
-_TLOGO = {}
-_pres = {}
+_ART_IMG = {}
 
 
-def title_logo():
-    if 'img' not in _TLOGO:
-        img = pygame.image.load(asset("logo.png")).convert()
-        h = SH - 16
-        _TLOGO['img'] = pygame.transform.smoothscale(img, (int(img.get_width() * h / img.get_height()), h))
-    return _TLOGO['img']
+def title_art(h=None):
+    """صورة "بيت الهمس" (assets/presplash.png) متكبّرة لارتفاع h بنفس النسبة. بتتحمّل مرة واحدة لكل ارتفاع"""
+    h = h or SH
+    if h not in _ART_IMG:
+        raw = pygame.image.load(asset("presplash.png")).convert()
+        _ART_IMG[h] = pygame.transform.smoothscale(raw, (max(1, int(raw.get_width() * h / raw.get_height())), h))
+    return _ART_IMG[h]
 
 
 def show_splash(screen, msg=""):
-    """شاشة تحميل باللوجو"""
+    """شاشة تحميل بصورة بيت الهمس"""
     try:
         screen.fill((0, 0, 0))
-        draw_text(screen, "بيت الهمس", 72, (170, 25, 25), SW // 2, SH // 2 - 60, 'c')
+        try:
+            img = title_art(SH - 50 if msg else SH)
+            screen.blit(img, ((SW - img.get_width()) // 2, 0))
+        except Exception:
+            draw_text(screen, "بيت الهمس", 72, (170, 25, 25), SW // 2, SH // 2 - 60, 'c')
         if msg:
-            pygame.draw.rect(screen, (0, 0, 0), (0, SH - 60, SW, 60))
-            draw_text(screen, msg, 22, (200, 190, 180), SW // 2, SH - 44, 'c')
+            pygame.draw.rect(screen, (0, 0, 0), (0, SH - 50, SW, 50))
+            draw_text(screen, msg, 22, (200, 190, 180), SW // 2, SH - 40, 'c')
         present(screen)
         pygame.event.pump()
-    except Exception:
-        pass
-
-
-def unity_splash(screen, fade_in=0.9, hold=2.0, fade_out=0.8):
-    """(اتلغت) كانت شاشة افتتاحية باللوجو"""
-    return
-    try:
-        raw = pygame.image.load(asset("logo.png")).convert()
-        sc = min(SW / raw.get_width(), SH / raw.get_height())                 # بنفس النسبة من غير قص
-        img = pygame.transform.smoothscale(raw, (max(1, int(raw.get_width() * sc)), max(1, int(raw.get_height() * sc))))
-        pos = ((SW - img.get_width()) // 2, (SH - img.get_height()) // 2)
-        clock = pygame.time.Clock()
-        total = fade_in + hold + fade_out
-        t = 0.0
-        while t < total:
-            for e in pygame.event.get():
-                if e.type == pygame.QUIT:
-                    pygame.quit()
-                    raise SystemExit
-                if e.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN, pygame.FINGERDOWN) and t > 0.3:
-                    t = max(t, total - fade_out)                              # تخطّي: يروح على الاختفاء علطول
-            if t < fade_in:
-                a = t / fade_in
-            elif t < fade_in + hold:
-                a = 1.0
-            else:
-                a = max(0.0, (total - t) / fade_out)
-            a = a * a * (3 - 2 * a)                                           # حركة ناعمة (smoothstep)
-            screen.fill((0, 0, 0))
-            img.set_alpha(int(255 * a))
-            screen.blit(img, pos)
-            present(screen)
-            t += min(clock.tick(60) / 1000.0, 0.05)
-        screen.fill((0, 0, 0))
-        present(screen)
-    except SystemExit:
-        raise
     except Exception:
         pass
 
@@ -5767,7 +5737,6 @@ def setup():
             screen = pygame.display.set_mode((SW, SH), pygame.FULLSCREEN | pygame.SCALED)   # ملء الشاشة
         except Exception:
             screen = pygame.display.set_mode((SW, SH))
-    unity_splash(screen)                                                           # دخلة اللوجو قبل أي حاجة
     show_splash(screen)
     try:
         if not pygame.mixer.get_init():
