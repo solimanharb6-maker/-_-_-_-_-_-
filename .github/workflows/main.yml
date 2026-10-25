@@ -1,0 +1,115 @@
+name: Build Windows EXE (32-bit & 64-bit)
+
+on:
+  push:
+    branches: [ main, master ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:   # تشغيل يدوي من واجهة GitHub
+
+jobs:
+  build:
+    name: Build Windows ${{ matrix.arch }}
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            python-arch: x64
+          - arch: x86
+            python-arch: x86
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # تثبيت Python بالمعمارية المطلوبة (x86 = 32-bit يعمل على windows-latest 64-bit)
+      - name: Setup Python (${{ matrix.python-arch }})
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          architecture: ${{ matrix.python-arch }}
+          cache: 'pip'
+
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip wheel setuptools
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Show Python info
+        shell: pwsh
+        run: |
+          python --version
+          python -c "import struct; print('Pointer size:', struct.calcsize('P')*8, 'bit')"
+
+      # ============================================================
+      # بناء الـ EXE
+      # - --onefile: ملف EXE واحد فقط
+      # - --windowed: من غير نافذة سوداء (console) خلف اللعبة
+      # - --collect-all pygame: يضم كل ملفات pygame المطلوبة
+      # ============================================================
+      - name: Build EXE with PyInstaller
+        shell: pwsh
+        run: |
+          $extra = @()
+          if (Test-Path "assets") {
+            $extra += "--add-data"; $extra += "assets;assets"
+          }
+          pyinstaller `
+            --noconfirm `
+            --clean `
+            --onefile `
+            --windowed `
+            --name "WhisperingHouse-${{ matrix.arch }}" `
+            --collect-all pygame `
+            --hidden-import fp3d `
+            --hidden-import server `
+            --hidden-import arabic_reshaper `
+            --hidden-import bidi `
+            --hidden-import pyttsx3 `
+            @extra `
+            main.py
+
+      - name: Verify EXE exists
+        shell: pwsh
+        run: |
+          $exe = "dist/WhisperingHouse-${{ matrix.arch }}.exe"
+          if (-not (Test-Path $exe)) { throw "EXE not found: $exe" }
+          Get-Item $exe | Format-List Name, Length, LastWriteTime
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WhisperingHouse-windows-${{ matrix.arch }}
+          path: dist/WhisperingHouse-${{ matrix.arch }}.exe
+          if-no-files-found: error
+          retention-days: 30
+
+  # (اختياري) إنشاء Release تلقائي عند عمل tag يبدأ بـ v
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: find artifacts -type f
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            artifacts/WhisperingHouse-windows-x64/*.exe
+            artifacts/WhisperingHouse-windows-x86/*.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
